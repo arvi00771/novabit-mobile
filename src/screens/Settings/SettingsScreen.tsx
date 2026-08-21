@@ -10,7 +10,10 @@ export default function SettingsScreen() {
 
   const handleToggleBiometrics = async (value: boolean) => {
     if (value) {
-      await enableBiometrics();
+      const enabled = await enableBiometrics();
+      if (!enabled) {
+        Alert.alert('Biometrics unavailable', 'Enroll Face ID, Touch ID, or fingerprint in your device settings before enabling quick unlock.');
+      }
     } else {
       await disableBiometrics();
     }

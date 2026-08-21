@@ -43,3 +43,4 @@ yarn-error.*
 # local runtime secrets
 .env
 .env.*
+!.env.example

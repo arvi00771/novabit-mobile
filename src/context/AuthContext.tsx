@@ -1,18 +1,23 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
 import apiClient from '../api/client';
-
-const TOKEN_KEY = 'novabit_auth_token';
-const BIOMETRICS_ENABLED_KEY = 'novabit_biometrics_enabled';
+import {
+  ACCESS_TOKEN_KEY,
+  AuthTokens,
+  BIOMETRICS_ENABLED_KEY,
+  clearTokens,
+  getStoredTokens,
+  saveTokens,
+} from '../api/authStorage';
 
 interface AuthContextType {
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (token: string) => Promise<void>;
+  login: (tokens: AuthTokens) => Promise<void>;
   logout: () => Promise<void>;
-  enableBiometrics: () => Promise<void>;
+  enableBiometrics: () => Promise<boolean>;
   disableBiometrics: () => Promise<void>;
   isBiometricsEnabled: boolean;
   authenticateWithBiometrics: () => Promise<boolean>;
@@ -26,39 +31,66 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isBiometricsEnabled, setIsBiometricsEnabled] = useState(false);
 
   useEffect(() => {
-    loadStoredAuth();
+    void loadStoredAuth();
   }, []);
 
   const loadStoredAuth = async () => {
     try {
-      const storedToken = await SecureStore.getItemAsync(TOKEN_KEY);
-      const biometricsEnabled = await SecureStore.getItemAsync(BIOMETRICS_ENABLED_KEY);
+      const [storedTokens, biometricsSetting] = await Promise.all([
+        getStoredTokens(),
+        SecureStore.getItemAsync(BIOMETRICS_ENABLED_KEY),
+      ]);
+      const biometricsEnabled = biometricsSetting === 'true';
+      setIsBiometricsEnabled(biometricsEnabled);
 
-      if (storedToken) {
-        setToken(storedToken);
+      // When quick unlock is enabled, do not expose a session until the OS has
+      // confirmed the user locally. Otherwise restore the persisted session.
+      if (storedTokens && !biometricsEnabled) {
+        setToken(storedTokens.accessToken);
       }
-
-      setIsBiometricsEnabled(biometricsEnabled === 'true');
-    } catch (e) {
-      console.error('Failed to load auth state', e);
+    } catch (error) {
+      console.error('Failed to restore auth state', error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const login = async (newToken: string) => {
-    await SecureStore.setItemAsync(TOKEN_KEY, newToken);
-    setToken(newToken);
+  const login = async (tokens: AuthTokens) => {
+    await saveTokens(tokens);
+    setToken(tokens.accessToken);
   };
 
   const logout = async () => {
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
-    setToken(null);
+    try {
+      const tokens = await getStoredTokens();
+      if (tokens?.refreshToken) {
+        await apiClient.post('/auth/logout', { refresh_token: tokens.refreshToken });
+      }
+    } catch {
+      // Local sign-out must still succeed if the device is offline.
+    } finally {
+      await clearTokens();
+      setToken(null);
+    }
   };
 
-  const enableBiometrics = async () => {
+  const enableBiometrics = async (): Promise<boolean> => {
+    const [hasHardware, isEnrolled] = await Promise.all([
+      LocalAuthentication.hasHardwareAsync(),
+      LocalAuthentication.isEnrolledAsync(),
+    ]);
+    if (!hasHardware || !isEnrolled) return false;
+
+    const result = await LocalAuthentication.authenticateAsync({
+      promptMessage: 'Confirm biometric quick unlock',
+      fallbackLabel: 'Use device passcode',
+      disableDeviceFallback: false,
+    });
+    if (!result.success) return false;
+
     await SecureStore.setItemAsync(BIOMETRICS_ENABLED_KEY, 'true');
     setIsBiometricsEnabled(true);
+    return true;
   };
 
   const disableBiometrics = async () => {
@@ -66,27 +98,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsBiometricsEnabled(false);
   };
 
-  const authenticateWithBiometrics = async () => {
-    const hasHardware = await LocalAuthentication.hasHardwareAsync();
-    const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+  const authenticateWithBiometrics = async (): Promise<boolean> => {
+    const tokens = await getStoredTokens();
+    if (!tokens) return false;
 
-    if (!hasHardware || !isEnrolled) {
-      return false;
-    }
+    const [hasHardware, isEnrolled] = await Promise.all([
+      LocalAuthentication.hasHardwareAsync(),
+      LocalAuthentication.isEnrolledAsync(),
+    ]);
+    if (!hasHardware || !isEnrolled) return false;
 
     const result = await LocalAuthentication.authenticateAsync({
-      promptMessage: 'Authenticate with biometrics',
-      fallbackLabel: 'Use passcode',
+      promptMessage: 'Unlock NovaBit',
+      fallbackLabel: 'Use device passcode',
+      disableDeviceFallback: false,
     });
+    if (!result.success) return false;
 
-    return result.success;
+    setToken(tokens.accessToken);
+    return true;
   };
 
   return (
     <AuthContext.Provider
       value={{
         token,
-        isAuthenticated: !!token,
+        isAuthenticated: Boolean(token),
         isLoading,
         login,
         logout,
@@ -103,8 +140,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (context === undefined) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };

@@ -47,8 +47,8 @@ export default function WithdrawScreen({ route, navigation }: any) {
   const fetchInitialData = async () => {
     try {
       const [coinsRes, walletsRes] = await Promise.all([
-        apiClient.get('/v1/wallets/coins'),
-        apiClient.get('/v1/wallets')
+        apiClient.get('/wallets/coins'),
+        apiClient.get('/wallets')
       ]);
 
       const coins = coinsRes.data.data;
@@ -76,7 +76,7 @@ export default function WithdrawScreen({ route, navigation }: any) {
   const fetchWithdrawalHistory = async () => {
     setHistoryLoading(true);
     try {
-      const response = await apiClient.get(`/v1/wallets/withdrawals?asset=${asset}`);
+      const response = await apiClient.get(`/wallets/withdrawals?asset=${asset}`);
       setWithdrawalHistory(response.data.data);
       setHistoryLoading(false);
     } catch (error) {
@@ -102,14 +102,14 @@ export default function WithdrawScreen({ route, navigation }: any) {
       Alert.alert('Error', 'Insufficient balance');
       return;
     }
-    if (totpCode.length !== 6) {
+    if (selectedCoin.withdrawal_requires_2fa && !/^\d{6}$/.test(totpCode)) {
       Alert.alert('Error', 'Please enter a valid 6-digit 2FA code');
       return;
     }
 
     setLoading(true);
     try {
-      await apiClient.post('/v1/wallets/withdraw', {
+      await apiClient.post('/wallets/withdraw', {
         asset: selectedCoin.asset,
         amount,
         address,
@@ -131,8 +131,8 @@ export default function WithdrawScreen({ route, navigation }: any) {
     <View key={item.id} style={[styles.historyItem, { borderBottomColor: colors.border }]}>
       <View style={styles.historyLeft}>
         <Text style={[styles.historyAmount, { color: colors.text }]}>{item.amount} {item.asset}</Text>
-        <Text style={[styles.historyAddress, { color: colors.tabIconDefault }]}>{item.address}</Text>
-        <Text style={[styles.historyDate, { color: colors.tabIconDefault }]}>{item.date}</Text>
+        <Text style={[styles.historyAddress, { color: colors.tabIconDefault }]}>{item.to_address}</Text>
+        <Text style={[styles.historyDate, { color: colors.tabIconDefault }]}>{new Date(item.created_at).toLocaleString()}</Text>
       </View>
       <View style={styles.historyRight}>
         <View style={[styles.statusBadge, { backgroundColor: item.status === 'COMPLETED' ? colors.success + '20' : colors.surface }]}>
@@ -215,7 +215,7 @@ export default function WithdrawScreen({ route, navigation }: any) {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={[styles.label, { color: colors.text }]}>2FA Verification Code</Text>
+              <Text style={[styles.label, { color: colors.text }]}>2FA Verification Code{selectedCoin.withdrawal_requires_2fa ? '' : ' (if enabled)'}</Text>
               <TextInput
                 style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
                 value={totpCode}

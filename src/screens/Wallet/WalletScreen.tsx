@@ -23,8 +23,8 @@ export default function WalletScreen({ navigation }: any) {
   const fetchData = async () => {
     try {
       const [walletsRes, transRes] = await Promise.all([
-        apiClient.get('/v1/wallets'),
-        apiClient.get('/v1/transactions?limit=10')
+        apiClient.get('/wallets'),
+        apiClient.get('/transactions?limit=10')
       ]);
 
       const walletData = walletsRes.data.data;
@@ -126,7 +126,7 @@ export default function WalletScreen({ navigation }: any) {
               asset={item.asset}
               amount={item.amount}
               status={item.status}
-              date={item.date}
+              date={new Date(item.created_at).toLocaleString()}
             />
           ))
         )}
