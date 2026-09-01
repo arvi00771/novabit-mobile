@@ -42,7 +42,7 @@ export default function DepositScreen({ route }: any) {
 
   const fetchSupportedCoins = async () => {
     try {
-      const response = await apiClient.get('/v1/wallets/coins');
+      const response = await apiClient.get('/wallets/coins');
       setSupportedCoins(response.data.data);
       if (!route.params?.asset && response.data.data.length > 0) {
         setAsset(response.data.data[0].asset);
@@ -67,7 +67,7 @@ export default function DepositScreen({ route }: any) {
 
   const fetchDepositAddress = async () => {
     try {
-      const response = await apiClient.get(`/v1/wallets/deposit/address/${asset}`);
+      const response = await apiClient.get(`/wallets/deposit/address/${asset}`);
       setAddress(response.data.data.address);
       setNetwork(response.data.data.network);
     } catch (error) {
@@ -79,7 +79,7 @@ export default function DepositScreen({ route }: any) {
   const fetchDepositHistory = async () => {
     setHistoryLoading(true);
     try {
-      const response = await apiClient.get(`/v1/transactions?type=DEPOSIT&asset=${asset}`);
+      const response = await apiClient.get(`/transactions?type=DEPOSIT&asset=${asset}`);
       setDepositHistory(response.data.data);
       setHistoryLoading(false);
     } catch (error) {
@@ -107,7 +107,7 @@ export default function DepositScreen({ route }: any) {
     <View style={[styles.historyItem, { borderBottomColor: colors.border }]}>
       <View style={styles.historyLeft}>
         <Text style={[styles.historyAmount, { color: colors.text }]}>{item.amount} {asset}</Text>
-        <Text style={[styles.historyDate, { color: colors.tabIconDefault }]}>{item.date}</Text>
+        <Text style={[styles.historyDate, { color: colors.tabIconDefault }]}>{new Date(item.created_at).toLocaleString()}</Text>
       </View>
       <View style={styles.historyRight}>
         <View style={[styles.statusBadge, { backgroundColor: item.status === 'CONFIRMED' ? colors.success + '20' : colors.surface }]}>
